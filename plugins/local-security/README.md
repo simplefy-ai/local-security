@@ -36,7 +36,7 @@ Automated security validation. Run monthly or after any configuration change. Th
 | MCP server health | Discovery, git status, uncommitted changes, upstream drift |
 | Dependency vulnerabilities | `npm audit` / `pip audit` on local MCP servers |
 | Credential security | File permissions (mode 600) and gitignore coverage |
-| Permissions audit | Global/project scope, embedded credentials, accumulated bash permissions |
+| Permissions audit | Global/project scope, secrets in permission entries, stale one-off bash commands |
 | Remote server version pin | Unpinned `uvx`/`npx` servers are a supply chain risk |
 | Stale credentials | Tokens older than 90 days flagged |
 | Anthropic data flow | Telemetry, error reporting, and privacy settings |
