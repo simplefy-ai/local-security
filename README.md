@@ -16,7 +16,7 @@ Two skills that help you understand and maintain the security of your Claude Cod
 | Skill | Purpose | Run when |
 |-------|---------|----------|
 | `/local-security:local-setup` | Discover and document your security posture | Once, or when regenerating |
-| `/local-security:local-review` | Validate with 9 automated checks | Monthly, or after any config change |
+| `/local-security:local-review` | Validate with automated checks | Monthly, or after any config change |
 
 **Setup** discovers your environment — MCP servers, credentials, privacy settings — and writes a security assessment to `~/.claude/security-assessment.md`. It records what exists but does not flag issues. Previous assessments are archived as dated snapshots.
 

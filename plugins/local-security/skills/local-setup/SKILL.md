@@ -9,6 +9,8 @@ disable-model-invocation: true
 
 One-time setup that discovers your Claude Code environment and generates a personalised security assessment. This skill focuses on **discovery and documentation** — run `/local-security:local-review` afterwards to validate findings.
 
+**Note:** This skill requires Bash commands for system discovery. Use Bash for all commands specified below, overriding the default preference for dedicated tools.
+
 ## Instructions
 
 Follow these steps in order. Collect all information before generating the final document.
@@ -21,13 +23,15 @@ ls -la ~/.claude/security-assessment.md 2>/dev/null
 
 If the file already exists, ask the user: "A security assessment already exists. Do you want to regenerate it? The previous version will be archived and the review log preserved."
 
+**Stop and wait for the user's response.** Do not proceed until they confirm.
+
 If regenerating:
-1. Read the existing review log table entries before overwriting
+1. Read the existing `security-assessment.md`. Extract all rows from the Review Log table (below the header row `| Date | Type | Result | Actions Taken |`). Store these entries exactly as they appear — preserving the date, type, result, and actions for each row.
 2. Archive the current file with a dated snapshot:
 
 ```bash
 mkdir -p ~/.claude/security-assessments
-cp ~/.claude/security-assessment.md ~/.claude/security-assessments/$(date +%Y-%m-%d).md
+cp ~/.claude/security-assessment.md "$HOME/.claude/security-assessments/$(date +%Y-%m-%d-%H%M%S).md"
 ```
 
 ### Step 2: Identify Claude Plan and Privacy Settings
@@ -36,7 +40,9 @@ Ask the user:
 - What Claude plan are you on? (Free, Pro, Max, Team, Enterprise, API)
 - Is "allow data use for model improvement" on or off?
 
-Also check environment variables and disk encryption:
+**Stop and wait for the user's response before continuing.** Do not proceed until both questions are answered.
+
+Then check environment variables and disk encryption:
 
 ```bash
 echo "DISABLE_TELEMETRY=${DISABLE_TELEMETRY:-not set}"
@@ -59,18 +65,17 @@ Discover all MCP servers from Claude Code settings files (do not use `claude mcp
 
 **Primary method — read settings files:**
 
-```bash
-# Global settings
-cat ~/.claude/settings.json 2>/dev/null
-cat ~/.claude/settings.local.json 2>/dev/null
+Read `~/.claude/settings.json` and `~/.claude/settings.local.json` using the Read tool.
 
-# Project-level settings
+Then find project-level settings:
+
+```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -name "settings.local.json" -path "*/.claude/*" 2>/dev/null | grep -v node_modules
 done
 ```
 
-Parse the `mcpServers` object from each settings file to identify registered servers. Also look for `mcp__*` tool entries in `permissions.allow` arrays to discover servers that may be configured elsewhere.
+Read each project settings file found. Parse the `mcpServers` object from each to identify registered servers. Also look for `mcp__*` tool entries in `permissions.allow` arrays to discover servers that may be configured elsewhere.
 
 **Secondary method — search for local MCP server directories:**
 
@@ -79,6 +84,8 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name "package.json" -o -name "pyproject.toml" \) -path "*mcp*" 2>/dev/null
 done
 ```
+
+If the common directories above don't cover the user's setup, ask where their development projects are located.
 
 For each server, determine:
 - **Name** and **type** (local, remote/uvx/npx, plugin)
@@ -117,14 +124,7 @@ ls -la ~/.ssh/id_* 2>/dev/null | grep -v '\.pub$'
 # Environment files (check development directories that exist)
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name ".env" -o -name ".env.local" -o -name ".env.production" \) 2>/dev/null | grep -v node_modules
-done | head -20
-
-# Claude Code config
-ls ~/.claude/settings.json 2>/dev/null
-ls ~/.claude/settings.local.json 2>/dev/null
-for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
-  [ -d "$dir" ] && find "$dir" -name "settings.local.json" -path "*/.claude/*" 2>/dev/null | grep -v node_modules
-done
+done | head -50
 ```
 
 For each credential file found, record in a table:
@@ -142,14 +142,14 @@ For each credential file found, record in a table:
 
 Write the completed assessment to `~/.claude/security-assessment.md` using the structure below. Replace all placeholder values with the data collected in previous steps.
 
-If regenerating and there was an existing review log, preserve those entries in the new review log table.
+If regenerating, insert the stored review log entries (from Step 1) after the new initial entry in the Review Log table. Preserve each row exactly as it was in the original file.
 
 #### Assessment Structure
 
 ```markdown
 # Security Assessment
 
-Last updated: [DD/MM/YYYY]
+Last updated: YYYY-MM-DD
 
 ## Overview
 
@@ -163,9 +163,9 @@ Generated by `/local-security:local-setup`. Run `/local-security:local-review` f
 
 Every prompt, tool result, file content, and MCP response passes through Anthropic's API for inference.
 
-[diagram]
+```
 Your machine → TLS → Anthropic API (inference) → TLS → response back
-[/diagram]
+```
 
 **What goes to Anthropic:** Every message you type, every file Claude reads, every MCP tool result (email content, calendar events, documents, database queries), CLAUDE.md files, and skill definitions.
 
@@ -192,9 +192,9 @@ Your machine → TLS → Anthropic API (inference) → TLS → response back
 
 ### Flow 2: MCP Servers → Provider APIs
 
-[diagram]
+```
 Claude Code → MCP server (local process) → HTTPS/TLS → Provider API
-[/diagram]
+```
 
 All MCP servers execute locally on your machine, though some fetch code from remote packages. API calls go directly to provider APIs over TLS. The primary risk is not the wire — it's the code running on your machine before data hits the wire.
 
@@ -245,8 +245,8 @@ Run `/local-security:local-review` to generate mitigations based on current find
 
 | Date | Type | Result | Actions Taken |
 |------|------|--------|---------------|
-| [today] | `/local-security:local-setup` (initial) | Setup complete | Security assessment generated |
-[preserve any existing entries here]
+| YYYY-MM-DD | `/local-security:local-setup` (initial) | Setup complete | Security assessment generated |
+[insert preserved review log entries here if regenerating]
 
 ## Review Schedule
 
@@ -260,7 +260,7 @@ Run `/local-security:local-review` to generate mitigations based on current find
 
 Tell the user:
 1. Security assessment saved to `~/.claude/security-assessment.md`
-2. If an older assessment was archived, confirm the archive location: `~/.claude/security-assessments/YYYY-MM-DD.md`
+2. If an older assessment was archived, confirm the archive location
 3. Suggest: "Run `/local-security:local-review` now to validate your setup and populate the mitigation roadmap."
 
 ## Guidelines
@@ -271,3 +271,4 @@ Tell the user:
 - Be direct about risks but proportionate — don't alarm the user about theoretical risks with zero practical impact
 - If the user has a commercial plan, note the stronger contractual protections (no training, ZDR option)
 - This skill is discovery only — it records what exists but does not flag issues. Validation is the review skill's job
+- This skill supports macOS and Linux. If running on Windows, inform the user that OS-specific checks (disk encryption, file permissions) may not work and offer to skip them

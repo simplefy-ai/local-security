@@ -1,13 +1,15 @@
 ---
 name: local-review
-description: Run an automated security review of your local Claude Code setup. 9 checks covering disk encryption, MCP server health, dependency vulnerabilities, credential security, permissions audit, version pinning, stale credentials, and data flow risks.
+description: Run an automated security review of your local Claude Code setup. Checks disk encryption, MCP server health, dependency vulnerabilities, credential security, permissions audit, version pinning, stale credentials, and data flow risks.
 user-invocable: true
-disable-model-invocation: false
+disable-model-invocation: true
 ---
 
 # /local-security:local-review — Security Review
 
 Automated security checks for your Claude Code setup. Validates three risk areas: supply chain integrity, credential storage, and permission scope.
+
+**Note:** This skill requires Bash commands for system checks. Use Bash for all commands specified below, overriding the default preference for dedicated tools. Use the Read tool for reading JSON settings files.
 
 ## Instructions
 
@@ -31,11 +33,11 @@ lsblk -o NAME,FSTYPE,MOUNTPOINT | grep -E "crypt|luks" || echo "No LUKS encrypti
 
 - PASS: Disk encryption is enabled
 - FAIL: Disk encryption is off — all tokens and credentials are unencrypted on disk
-- INFO: Could not determine (unsupported OS)
+- INFO: Could not determine (unsupported OS or Windows)
 
 ### Check 2: MCP Server Health
 
-Discover all MCP servers and verify the integrity of local ones. This combines server discovery and integrity checking in a single step.
+Discover all MCP servers and verify the integrity of local ones.
 
 #### 2a: Discover MCP Servers
 
@@ -43,18 +45,17 @@ Discover servers from Claude Code settings files (do not use `claude mcp list` �
 
 **Primary method — read settings files:**
 
-```bash
-# Global settings
-cat ~/.claude/settings.json 2>/dev/null
-cat ~/.claude/settings.local.json 2>/dev/null
+Use the Read tool to read `~/.claude/settings.json` and `~/.claude/settings.local.json`.
 
-# Project-level settings
+Then find project-level settings:
+
+```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -name "settings.local.json" -path "*/.claude/*" 2>/dev/null | grep -v node_modules
 done
 ```
 
-Parse the `mcpServers` object from each settings file to identify registered servers. Also look for `mcp__*` tool entries in `permissions.allow` arrays to discover servers that may be configured elsewhere.
+Read each project settings file found using the Read tool. Parse the `mcpServers` object from each to identify registered servers. Also look for `mcp__*` tool entries in `permissions.allow` arrays to discover servers that may be configured elsewhere.
 
 **Secondary method — search for local MCP server directories:**
 
@@ -64,7 +65,9 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
 done
 ```
 
-If a security assessment file exists (`~/.claude/security-assessment.md`), cross-reference its MCP Server Inventory table against discovered servers to identify any changes.
+If a security assessment file exists (`~/.claude/security-assessment.md`), read it and cross-reference its MCP Server Inventory table against discovered servers to identify any changes.
+
+If the common directories above don't cover the user's setup, ask where their development projects are located.
 
 Classify each server as:
 - **Local** — source code on your machine, manually updated
@@ -85,7 +88,7 @@ git diff HEAD
 - WARN: Uncommitted changes detected — list them
 - FAIL: Repository missing or corrupted
 
-Also check how far behind upstream. Handle cases where the remote is not named `origin` or there is no tracking branch:
+Also check how far behind upstream. Note: this runs `git fetch` which contacts the remote server — it does not modify local branches but does update remote tracking refs.
 
 ```bash
 cd <server-path>
@@ -123,7 +126,7 @@ cd <server-path> && npm audit 2>/dev/null
 
 **Python:**
 ```bash
-cd <server-path> && pip audit 2>/dev/null || safety check 2>/dev/null
+cd <server-path> && pip audit 2>/dev/null
 ```
 
 - PASS: No vulnerabilities found
@@ -156,7 +159,7 @@ ls -la ~/.ssh/id_* 2>/dev/null | grep -v '\.pub$'
 # Environment files with potential secrets
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name ".env" -o -name ".env.local" -o -name ".env.production" \) 2>/dev/null | grep -v node_modules
-done | head -20
+done | head -50
 ```
 
 For each file found, check permissions:
@@ -175,7 +178,7 @@ stat -c "%a %n" <file>
 - WARN: File is mode 644 (world-readable) — recommend tightening
 - FAIL: File is mode 666 or 777 — credentials exposed to all users
 
-If any file has permissions looser than 600, offer to fix with `chmod 600`.
+If any file has permissions looser than 600, ask the user if they'd like to fix it with `chmod 600`. Apply the change only after user confirmation.
 
 #### 4b: Credential Gitignore Coverage
 
@@ -202,12 +205,7 @@ Combines global and project-scoped permission review into a single check. Also s
 
 #### 5a: Global Permissions
 
-Read the global Claude Code settings:
-
-```bash
-cat ~/.claude/settings.json 2>/dev/null
-cat ~/.claude/settings.local.json 2>/dev/null
-```
+Use the Read tool to read `~/.claude/settings.json` and `~/.claude/settings.local.json`.
 
 For each tool in the `permissions.allow` array (skip comment lines starting with `//`):
 
@@ -230,7 +228,7 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
 done
 ```
 
-For each file:
+Read each file using the Read tool. For each:
 - List any MCP write tools permitted
 - Check for duplicate tools already permitted globally (unnecessary, clutters config)
 - Flag any tools that seem inappropriate for the project context
@@ -240,14 +238,9 @@ For each file:
 
 #### 5c: Credential-Containing Permission Entries
 
-When reading global and project `settings.local.json` files, scan all `permissions.allow` entries for patterns that look like embedded secrets:
+Using the settings file content already read in 5a and 5b, scan all `permissions.allow` string values for patterns that look like embedded secrets. Do not run any commands — just search the JSON text you already have.
 
-- Base64 JWT tokens (strings starting with `eyJ`)
-- API key patterns (long alphanumeric strings with prefixes like `sk-`, `pk-`, `key-`, `token-`)
-- Long hex strings (32+ characters)
-- Bearer token patterns
-
-Look for these patterns within permission entry strings (do not run these as commands — just scan the JSON text):
+Patterns to look for:
 - `eyJ` prefix (base64 JWT)
 - `sk-`, `pk-`, `key-`, `token-` followed by 20+ alphanumeric characters
 - Hex strings of 32+ characters
@@ -262,11 +255,7 @@ Example matches in permission entries:
 
 #### 5d: Accumulated Bash Permissions
 
-Count total bash permission entries per project:
-
-```bash
-# For each project settings.local.json, count Bash() entries in permissions.allow
-```
+Using the settings file content already read in 5b, count the `Bash()` permission entries per project:
 
 - WARN: Projects with >30 bash entries have accumulated permissions that should be cleaned — review and remove stale entries
 - WARN: Bash permission entries longer than 100 characters are likely one-off commands that should be removed after use
@@ -341,7 +330,7 @@ ls -la ~/.claude/security-assessment.md 2>/dev/null
 - PASS: File exists — check the review log for the last review date
 - INFO: No security assessment found. Run `/local-security:local-setup` to generate one.
 
-If the file exists, check the review log for the most recent entry date. If >30 days old:
+If the file exists, read it and check the review log for the most recent entry date. If >30 days old:
 - WARN: Security assessment review overdue (last review: [date])
 
 Also check for dated snapshots:
@@ -357,7 +346,7 @@ Report the number of archived assessments if any exist.
 Present a summary table:
 
 ```
-SECURITY REVIEW — [date]
+SECURITY REVIEW — YYYY-MM-DD
 
 CHECK                          STATUS
 Disk encryption                [PASS/WARN/FAIL]
@@ -379,13 +368,14 @@ If all checks pass: "Your setup looks solid. Next review recommended: [date + 1 
 
 If a security assessment file exists (`~/.claude/security-assessment.md`):
 1. Append a new entry to the review log table with today's date, result summary, and any actions taken
-2. Update the Mitigation Roadmap section with prioritised mitigations based on any WARN or FAIL findings. For each item, include: risk addressed, action to take, effort estimate, and trade-offs. If all checks pass, replace the mitigation section with "No mitigations required — all checks passed on [date]."
+2. Replace the entire Mitigation Roadmap section with prioritised mitigations based on any WARN or FAIL findings from this review. For each mitigation, include: risk addressed, action to take, effort estimate, and trade-offs. Do not append to previous mitigations — generate a fresh set based on the current review results. If all checks pass, replace the section with "No mitigations required — all checks passed on YYYY-MM-DD."
 
 ## Guidelines
 
 - Run every check — don't skip silently
-- Never modify anything without asking first (except offering to fix file permissions)
+- Never modify anything without asking first. If offering to fix file permissions, ask the user and wait for confirmation before applying
 - Explain the practical risk of each finding, not just the technical classification
 - Distinguish between theoretical vulnerabilities and actual exploitable risks
 - Be concise — the whole review should be scannable in under a minute
 - This skill validates three actual risks: **supply chain**, **credential storage**, and **scope creep**
+- This skill supports macOS and Linux. If running on Windows, inform the user that OS-specific checks (disk encryption, file permissions) may not work and offer to skip them
