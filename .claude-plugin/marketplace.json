@@ -1,0 +1,21 @@
+{
+  "name": "simplefy-ai",
+  "owner": {
+    "name": "simplefy.ai"
+  },
+  "plugins": [
+    {
+      "name": "local-security",
+      "source": "./plugins/local-security",
+      "description": "Security review and hardening for Claude Code. Two skills: local-setup discovers your environment, local-review validates it with 9 automated checks covering MCP servers, credentials, permissions, and data flows.",
+      "version": "1.0.0",
+      "author": {
+        "name": "simplefy.ai"
+      },
+      "homepage": "https://github.com/simplefy-ai/local-security",
+      "repository": "https://github.com/simplefy-ai/local-security",
+      "license": "MIT",
+      "keywords": ["security", "mcp", "credentials", "permissions", "hardening"]
+    }
+  ]
+}
