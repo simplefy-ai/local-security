@@ -55,9 +55,11 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
 done
 ```
 
-Read each project settings file found using the Read tool. Parse the `mcpServers` object from each to identify registered servers. Also look for `mcp__*` tool entries in `permissions.allow` arrays to discover servers that may be configured elsewhere.
+Read each project settings file found using the Read tool. **Read files in batches of 3-4** to avoid tool call limits — do not attempt to read all files in a single parallel batch.
 
-**Secondary method — search for local MCP server directories:**
+Parse the `mcpServers` object from each to identify registered servers. Optionally cross-reference `mcp__*` tool entries in `permissions.allow` arrays if any servers appear to be missing from the `mcpServers` blocks.
+
+**Secondary method — find servers not registered in settings files:**
 
 ```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
@@ -83,6 +85,8 @@ cd <server-path>
 git status --short
 git diff HEAD
 ```
+
+Untracked `.claude/` directories are expected (project settings) and should not be flagged as uncommitted changes.
 
 - PASS: Working tree clean, no uncommitted changes
 - WARN: Uncommitted changes detected — list them
@@ -205,7 +209,7 @@ Combines global and project-scoped permission review into a single check. Also s
 
 #### 5a: Global Permissions
 
-Use the Read tool to read `~/.claude/settings.json` and `~/.claude/settings.local.json`.
+Use the Read tool to read `~/.claude/settings.json` and `~/.claude/settings.local.json`. If these files were already read earlier in this session (e.g., during Check 2), reuse the content rather than re-reading.
 
 For each tool in the `permissions.allow` array (skip comment lines starting with `//`):
 
@@ -228,7 +232,7 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
 done
 ```
 
-Read each file using the Read tool. For each:
+Read each file using the Read tool (in batches of 3-4). If these files were already read in Check 2, reuse the content. For each:
 - List any MCP write tools permitted
 - Check for duplicate tools already permitted globally (unnecessary, clutters config)
 - Flag any tools that seem inappropriate for the project context
@@ -238,7 +242,7 @@ Read each file using the Read tool. For each:
 
 #### 5c: Credential-Containing Permission Entries
 
-Using the settings file content already read in 5a and 5b, scan all `permissions.allow` string values for patterns that look like embedded secrets. Do not run any commands — just search the JSON text you already have.
+Using the settings file content from 5a and 5b (read the files if not already in context from previous checks), scan all `permissions.allow` string values for patterns that look like embedded secrets. Do not run any commands — just search the JSON text you already have.
 
 Patterns to look for:
 - `eyJ` prefix (base64 JWT)
@@ -246,6 +250,7 @@ Patterns to look for:
 - Hex strings of 32+ characters
 - `Bearer ` followed by a long token
 - `Authorization:` headers with inline credentials
+- Plaintext passwords in command strings
 
 Example matches in permission entries:
 - `"Bash(curl -H 'Authorization: Bearer sk-abc123...')"`
@@ -255,7 +260,7 @@ Example matches in permission entries:
 
 #### 5d: Accumulated Bash Permissions
 
-Using the settings file content already read in 5b, count the `Bash()` permission entries per project:
+Using the settings file content from 5b, count the `Bash()` permission entries per project. Exclude comment lines (starting with `//`) from the count.
 
 - WARN: Projects with >30 bash entries have accumulated permissions that should be cleaned — review and remove stale entries
 - WARN: Bash permission entries longer than 100 characters are likely one-off commands that should be removed after use
@@ -267,7 +272,7 @@ Using the settings file content already read in 5b, count the `Bash()` permissio
 
 ### Check 6: Remote Server Version Pinning
 
-For any MCP server registered via `uvx` or `npx` (identified in Check 2), check whether the version is pinned:
+For any MCP server registered via `uvx` or `npx` (identified in Check 2), check whether the version is pinned. Look at the `command` and `args` fields in each server's `mcpServers` configuration to determine the launch method:
 
 - Pinned: `uvx package-name==1.2.3` or `npx package-name@1.2.3`
 - Unpinned: `uvx package-name` or `npx package-name`
@@ -294,9 +299,15 @@ stat -c "%y" <file> | cut -d' ' -f1
 
 Note: OAuth refresh tokens auto-renew, so the modification date reflects the last refresh, not the original grant. A recent date means the token is actively being used.
 
-- PASS: Token refreshed within the last 90 days
-- WARN: Token older than 90 days — consider re-authenticating
-- INFO: Report the age of each token
+For OAuth tokens, API keys, and environment files:
+- PASS: Refreshed within the last 90 days
+- WARN: Older than 90 days — consider re-authenticating
+
+For SSH keys — these do not auto-renew and are typically rotated on a longer cycle:
+- PASS: Less than 12 months old
+- INFO: Older than 12 months — report age, note that SSH key rotation is optional but recommended annually
+
+- INFO: Report the age of each credential
 
 ### Check 8: Anthropic Data Flow
 
@@ -359,7 +370,7 @@ Stale credentials              [PASS/WARN/INFO]
 Anthropic data flow            [INFO]
 Assessment status              [PASS/WARN/INFO]
 
-OVERALL: [X passed, Y warnings, Z failures]
+OVERALL: [X passed, Y warnings, Z failures, N informational]
 ```
 
 If any FAIL items exist, list recommended actions in priority order.
@@ -368,7 +379,8 @@ If all checks pass: "Your setup looks solid. Next review recommended: [date + 1 
 
 If a security assessment file exists (`~/.claude/security-assessment.md`):
 1. Append a new entry to the review log table with today's date, result summary, and any actions taken
-2. Replace the entire Mitigation Roadmap section with prioritised mitigations based on any WARN or FAIL findings from this review. For each mitigation, include: risk addressed, action to take, effort estimate, and trade-offs. Do not append to previous mitigations — generate a fresh set based on the current review results. If all checks pass, replace the section with "No mitigations required — all checks passed on YYYY-MM-DD."
+2. If any credential permissions were fixed during this review, update the Credential Inventory table to reflect the corrected permissions
+3. Replace the entire Mitigation Roadmap section with prioritised mitigations based on any WARN or FAIL findings from this review. For each mitigation, include: risk addressed, action to take, effort estimate, and trade-offs. Do not append to previous mitigations — generate a fresh set based on the current review results. If all checks pass, replace the section with "No mitigations required — all checks passed on YYYY-MM-DD."
 
 ## Guidelines
 

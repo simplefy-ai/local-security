@@ -34,6 +34,8 @@ mkdir -p ~/.claude/security-assessments
 cp ~/.claude/security-assessment.md "$HOME/.claude/security-assessments/$(date +%Y-%m-%d-%H%M%S).md"
 ```
 
+3. Confirm the archive to the user immediately: "Previous assessment archived to `~/.claude/security-assessments/YYYY-MM-DD-HHMMSS.md`."
+
 ### Step 2: Identify Claude Plan and Privacy Settings
 
 Ask the user:
@@ -75,9 +77,11 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
 done
 ```
 
-Read each project settings file found. Parse the `mcpServers` object from each to identify registered servers. Also look for `mcp__*` tool entries in `permissions.allow` arrays to discover servers that may be configured elsewhere.
+Read each project settings file found using the Read tool. **Read files in batches of 3-4** to avoid tool call limits — do not attempt to read all files in a single parallel batch.
 
-**Secondary method — search for local MCP server directories:**
+Parse the `mcpServers` object from each settings file to identify registered servers. Optionally cross-reference `mcp__*` tool entries in `permissions.allow` arrays if any servers appear to be missing from the `mcpServers` blocks.
+
+**Secondary method — find servers not registered in settings files:**
 
 ```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
@@ -85,7 +89,7 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
 done
 ```
 
-If the common directories above don't cover the user's setup, ask where their development projects are located.
+This catches local MCP server repos that may not yet be registered. If the common directories above don't cover the user's setup, ask where their development projects are located.
 
 For each server, determine:
 - **Name** and **type** (local, remote/uvx/npx, plugin)
@@ -146,7 +150,7 @@ If regenerating, insert the stored review log entries (from Step 1) after the ne
 
 #### Assessment Structure
 
-```markdown
+````markdown
 # Security Assessment
 
 Last updated: YYYY-MM-DD
@@ -254,13 +258,13 @@ Run `/local-security:local-review` to generate mitigations based on current find
 - **Quarterly:** Review this assessment. Re-evaluate any server that changed risk level
 - **On change:** Any time you add an MCP server, pull updates, or change permissions — run `/local-security:local-review`
 - **On incident:** If any MCP package reports a security vulnerability, review immediately
-```
+````
 
 ### Step 6: Confirm and Next Steps
 
 Tell the user:
 1. Security assessment saved to `~/.claude/security-assessment.md`
-2. If an older assessment was archived, confirm the archive location
+2. If an older assessment was archived, confirm the archive location (should already have been confirmed in Step 1)
 3. Suggest: "Run `/local-security:local-review` now to validate your setup and populate the mitigation roadmap."
 
 ## Guidelines
