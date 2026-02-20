@@ -1,7 +1,7 @@
 {
   "name": "local-security",
   "description": "Security review and hardening for Claude Code. Two skills: local-setup discovers your environment, local-review validates it with automated checks covering MCP servers, credentials, permissions, and data flows.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "simplefy.ai"
   },

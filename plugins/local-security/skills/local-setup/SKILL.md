@@ -67,14 +67,14 @@ Discover all MCP servers from Claude Code settings files (do not use `claude mcp
 
 **Primary method — read settings files:**
 
-Read `~/.claude/settings.json` and `~/.claude/settings.local.json` using the Read tool.
+Read `~/.claude/settings.json` using the Read tool. Also read `~/.claude/settings.local.json` if it exists (this file is not always present — skip without error if missing).
 
 Then find project-level settings:
 
 ```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -name "settings.local.json" -path "*/.claude/*" 2>/dev/null | grep -v node_modules
-done
+done | sort -u
 ```
 
 Read each project settings file found using the Read tool. **Read files in batches of 3-4** to avoid tool call limits — do not attempt to read all files in a single parallel batch.
@@ -86,7 +86,7 @@ Parse the `mcpServers` object from each settings file to identify registered ser
 ```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name "package.json" -o -name "pyproject.toml" \) -path "*mcp*" 2>/dev/null
-done
+done | sort -u
 ```
 
 This catches local MCP server repos that may not yet be registered. If the common directories above don't cover the user's setup, ask where their development projects are located.
@@ -146,7 +146,7 @@ For each credential file found, record in a table:
 
 Write the completed assessment to `~/.claude/security-assessment.md` using the structure below. Replace all placeholder values with the data collected in previous steps.
 
-If regenerating, insert the stored review log entries (from Step 1) after the new initial entry in the Review Log table. Preserve each row exactly as it was in the original file.
+If regenerating, insert the stored review log entries (from Step 1) after the new initial entry in the Review Log table. Preserve the content of each row but normalise all dates to ISO format (YYYY-MM-DD) for consistency.
 
 #### Assessment Structure
 

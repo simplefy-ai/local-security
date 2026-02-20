@@ -2,7 +2,6 @@
 name: local-review
 description: Run an automated security review of your local Claude Code setup. Checks disk encryption, MCP server health, dependency vulnerabilities, credential security, permissions audit, version pinning, stale credentials, and data flow risks.
 user-invocable: true
-disable-model-invocation: true
 ---
 
 # /local-security:local-review — Security Review
@@ -45,14 +44,14 @@ Discover servers from Claude Code settings files (do not use `claude mcp list` �
 
 **Primary method — read settings files:**
 
-Use the Read tool to read `~/.claude/settings.json` and `~/.claude/settings.local.json`.
+Use the Read tool to read `~/.claude/settings.json`. Also read `~/.claude/settings.local.json` if it exists (this file is not always present — skip without error if missing).
 
 Then find project-level settings:
 
 ```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -name "settings.local.json" -path "*/.claude/*" 2>/dev/null | grep -v node_modules
-done
+done | sort -u
 ```
 
 Read each project settings file found using the Read tool. **Read files in batches of 3-4** to avoid tool call limits — do not attempt to read all files in a single parallel batch.
@@ -64,7 +63,7 @@ Parse the `mcpServers` object from each to identify registered servers. Optional
 ```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name "package.json" -o -name "pyproject.toml" \) -path "*mcp*" 2>/dev/null
-done
+done | sort -u
 ```
 
 If a security assessment file exists (`~/.claude/security-assessment.md`), read it and cross-reference its MCP Server Inventory table against discovered servers to identify any changes.
@@ -209,7 +208,7 @@ Combines global and project-scoped permission review into a single check. Also s
 
 #### 5a: Global Permissions
 
-Use the Read tool to read `~/.claude/settings.json` and `~/.claude/settings.local.json`. If these files were already read earlier in this session (e.g., during Check 2), reuse the content rather than re-reading.
+Use the Read tool to read `~/.claude/settings.json`. Also read `~/.claude/settings.local.json` if it exists. If these files were already read earlier in this session (e.g., during Check 2 or from a preceding `/local-security:local-setup` run), reuse the content rather than re-reading.
 
 For each tool in the `permissions.allow` array (skip comment lines starting with `//`):
 
@@ -229,10 +228,10 @@ Find all project-level settings:
 ```bash
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
   [ -d "$dir" ] && find "$dir" -name "settings.local.json" -path "*/.claude/*" 2>/dev/null | grep -v node_modules
-done
+done | sort -u
 ```
 
-Read each file using the Read tool (in batches of 3-4). If these files were already read in Check 2, reuse the content. For each:
+Read each file using the Read tool (in batches of 3-4). If these files were already read in Check 2 or from a preceding `/local-security:local-setup` run, reuse the content. For each:
 - List any MCP write tools permitted
 - Check for duplicate tools already permitted globally (unnecessary, clutters config)
 - Flag any tools that seem inappropriate for the project context
@@ -242,7 +241,7 @@ Read each file using the Read tool (in batches of 3-4). If these files were alre
 
 #### 5c: Credential-Containing Permission Entries
 
-Using the settings file content from 5a and 5b (read the files if not already in context from previous checks), scan all `permissions.allow` string values for patterns that look like embedded secrets. Do not run any commands — just search the JSON text you already have.
+Using the settings file content from 5a and 5b, scan all `permissions.allow` string values for patterns that look like embedded secrets. If settings files were not read in a prior check during this session, read them now using the Read tool before scanning. Do not run any commands — just search the JSON text you already have.
 
 Patterns to look for:
 - `eyJ` prefix (base64 JWT)
