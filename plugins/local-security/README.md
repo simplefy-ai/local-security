@@ -67,6 +67,37 @@ Everything else (wire encryption, provider-side security) is handled by TLS and 
 - **Quarterly:** Review the full security assessment
 - **On change:** After adding MCP servers, pulling updates, or changing permissions
 
+## Validation
+
+No test framework exists for Claude Code plugin skills. Run these checks after making changes:
+
+```bash
+# From the repo root
+
+# 1. JSON validity
+python3 -c "import json; json.load(open('.claude-plugin/marketplace.json')); print('marketplace.json: valid')"
+python3 -c "import json; json.load(open('plugins/local-security/.claude-plugin/plugin.json')); print('plugin.json: valid')"
+
+# 2. SKILL.md frontmatter — both skills must have name, description, user-invocable
+for skill in local-setup local-review; do
+  head -6 "plugins/local-security/skills/$skill/SKILL.md" | grep -q "^name:" && echo "$skill frontmatter: valid" || echo "$skill frontmatter: MISSING"
+done
+
+# 3. File structure — all expected files present
+for f in .gitignore README.md .claude-plugin/marketplace.json plugins/local-security/.claude-plugin/plugin.json plugins/local-security/.gitignore plugins/local-security/LICENSE plugins/local-security/README.md plugins/local-security/skills/local-setup/SKILL.md plugins/local-security/skills/local-review/SKILL.md; do
+  [ -f "$f" ] || echo "MISSING: $f"
+done && echo "File structure: complete"
+```
+
+After structural checks pass, reinstall and run both skills manually:
+
+```
+/plugin uninstall local-security@simplefy-ai
+/plugin install local-security@simplefy-ai
+```
+
+Restart Claude Code, then run `/local-security:local-setup` and `/local-security:local-review` to verify end-to-end.
+
 ## Licence
 
 MIT
