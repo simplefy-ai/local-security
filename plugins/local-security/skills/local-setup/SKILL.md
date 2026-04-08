@@ -76,9 +76,19 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
 done | sort -u
 ```
 
-Read each project settings file found using the Read tool. **Read files in batches of 3-4** to avoid tool call limits — do not attempt to read all files in a single parallel batch.
+Read each project settings file found using the Read tool. These are typically small JSON files and can be read in parallel.
 
 Parse the `mcpServers` object from each settings file to identify registered servers. Optionally cross-reference `mcp__*` tool entries in `permissions.allow` arrays if any servers appear to be missing from the `mcpServers` blocks.
+
+**Also check for `.mcp.json` project configs:**
+
+```bash
+for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
+  [ -d "$dir" ] && find "$dir" -maxdepth 3 -name ".mcp.json" 2>/dev/null | grep -v node_modules
+done | sort -u
+```
+
+Read any `.mcp.json` files found — these can contain MCP server registrations with `command`, `args`, and `env` fields that may include API keys or tokens. Include these servers in the inventory.
 
 **Secondary method — find servers not registered in settings files:**
 
@@ -110,23 +120,27 @@ Build the server risk matrix as a markdown table:
 
 Search for credential files across common locations:
 
+Run these as **separate commands** (not chained with `&&`) so a missing file doesn't abort the whole discovery:
+
 ```bash
 # OAuth tokens and Google credentials
 find ~ -maxdepth 4 \( -name "token.json" -o -name "credentials.json" -o -name "application_default_credentials.json" \) 2>/dev/null | grep -v node_modules | grep -v ".Trash"
+```
 
-# Cloud provider credentials
-ls -la ~/.aws/credentials 2>/dev/null
-ls -la ~/.config/gcloud/application_default_credentials.json 2>/dev/null
-ls -la ~/.kube/config 2>/dev/null
-ls -la ~/.docker/config.json 2>/dev/null
-ls -la ~/.npmrc 2>/dev/null
+```bash
+# Cloud provider credentials — each checked independently
+ls -la ~/.aws/credentials 2>/dev/null; ls -la ~/.config/gcloud/application_default_credentials.json 2>/dev/null; ls -la ~/.kube/config 2>/dev/null; ls -la ~/.docker/config.json 2>/dev/null; ls -la ~/.npmrc 2>/dev/null
+```
 
+```bash
 # SSH keys (skip .pub files — public keys are not secrets)
 ls -la ~/.ssh/id_* 2>/dev/null | grep -v '\.pub$'
+```
 
-# Environment files (check development directories that exist)
+```bash
+# Environment files and MCP config files with potential secrets
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
-  [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name ".env" -o -name ".env.local" -o -name ".env.production" \) 2>/dev/null | grep -v node_modules
+  [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name ".env" -o -name ".env.local" -o -name ".env.production" -o -name ".mcp.json" \) 2>/dev/null | grep -v node_modules
 done | head -50
 ```
 

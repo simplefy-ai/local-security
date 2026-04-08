@@ -54,9 +54,19 @@ for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
 done | sort -u
 ```
 
-Read each project settings file found using the Read tool. **Read files in batches of 3-4** to avoid tool call limits — do not attempt to read all files in a single parallel batch.
+Read each project settings file found using the Read tool. These are typically small JSON files and can be read in parallel.
 
 Parse the `mcpServers` object from each to identify registered servers. Optionally cross-reference `mcp__*` tool entries in `permissions.allow` arrays if any servers appear to be missing from the `mcpServers` blocks.
+
+**Also check for `.mcp.json` project configs:**
+
+```bash
+for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
+  [ -d "$dir" ] && find "$dir" -maxdepth 3 -name ".mcp.json" 2>/dev/null | grep -v node_modules
+done | sort -u
+```
+
+Read any `.mcp.json` files found — these can contain MCP server registrations with `command`, `args`, and `env` fields that may include API keys or tokens.
 
 **Secondary method — find servers not registered in settings files:**
 
@@ -132,10 +142,12 @@ cd <server-path> && npm audit 2>/dev/null
 cd <server-path> && pip audit 2>/dev/null
 ```
 
+If `pip audit` is not available for Python servers, try `pip check` as a lightweight fallback (catches broken dependencies, not CVEs) and suggest installing `pip-audit` for full vulnerability scanning.
+
 - PASS: No vulnerabilities found
 - WARN: Low/moderate vulnerabilities — list them with a brief note on practical risk (e.g., ReDoS in a local-only server is low practical risk)
 - FAIL: High/critical vulnerabilities — flag for immediate review
-- INFO: No audit tool available
+- INFO: No audit tool available — suggest `pip install pip-audit`
 
 ### Check 4: Credential Security
 
@@ -145,23 +157,27 @@ Combines credential file permissions and gitignore coverage into a single check.
 
 Search for common credential files:
 
+Run these as **separate commands** (not chained with `&&`) so a missing file doesn't abort the whole discovery:
+
 ```bash
 # Google OAuth tokens and credentials
 find ~ -maxdepth 4 \( -name "token.json" -o -name "credentials.json" -o -name "application_default_credentials.json" \) 2>/dev/null | grep -v node_modules | grep -v ".Trash"
+```
 
-# Cloud provider credentials
-ls -la ~/.aws/credentials 2>/dev/null
-ls -la ~/.config/gcloud/application_default_credentials.json 2>/dev/null
-ls -la ~/.kube/config 2>/dev/null
-ls -la ~/.docker/config.json 2>/dev/null
-ls -la ~/.npmrc 2>/dev/null
+```bash
+# Cloud provider credentials — each checked independently
+ls -la ~/.aws/credentials 2>/dev/null; ls -la ~/.config/gcloud/application_default_credentials.json 2>/dev/null; ls -la ~/.kube/config 2>/dev/null; ls -la ~/.docker/config.json 2>/dev/null; ls -la ~/.npmrc 2>/dev/null
+```
 
+```bash
 # SSH keys (skip .pub files — public keys are not secrets)
 ls -la ~/.ssh/id_* 2>/dev/null | grep -v '\.pub$'
+```
 
-# Environment files with potential secrets
+```bash
+# Environment files and MCP config files with potential secrets
 for dir in ~/Sites ~/projects ~/code ~/repos ~/dev ~/workspace ~/src; do
-  [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name ".env" -o -name ".env.local" -o -name ".env.production" \) 2>/dev/null | grep -v node_modules
+  [ -d "$dir" ] && find "$dir" -maxdepth 3 \( -name ".env" -o -name ".env.local" -o -name ".env.production" -o -name ".mcp.json" \) 2>/dev/null | grep -v node_modules
 done | head -50
 ```
 
@@ -214,12 +230,16 @@ For each tool in the `permissions.allow` array (skip comment lines starting with
 
 - Check if it is a **read-only** operation (read, get, list, search, fetch, query)
 - Flag any **write** operations (create, insert, delete, modify, update, append, move, rename, resolve, send, write, replace, edit) as **WARN** or **FAIL**
+- Flag any **`sudo`** or **`rm`** Bash permissions at global scope as **FAIL** — these grant elevated or destructive access from any project
+- Flag any **`Bash(ssh:*)`** at global scope as **WARN** — allows connecting to any host from any project
 
 Write tools at global scope mean Claude can modify external systems from any project without prompting.
 
+**Also check parent-directory settings.** A settings file at `~/Sites/.claude/settings.local.json` cascades to all child projects under `~/Sites/`. Treat parent-directory write permissions with the same scrutiny as global permissions — they have equivalent blast radius.
+
 - PASS: All globally permitted tools are read-only
 - WARN: Write tools found at global scope — list them and explain the risk
-- FAIL: Destructive tools (delete, send) found at global scope
+- FAIL: Destructive tools (delete, send, sudo) found at global scope
 
 #### 5b: Project-Scoped Permissions
 
@@ -269,18 +289,26 @@ Using the settings file content from 5b, count the `Bash()` permission entries p
 - WARN: Issues found — summarise
 - FAIL: Global write/destructive permissions or embedded credentials
 
-### Check 6: Remote Server Version Pinning
+### Check 6: Remote Package Version Pinning
 
-For any MCP server registered via `uvx` or `npx` (identified in Check 2), check whether the version is pinned. Look at the `command` and `args` fields in each server's `mcpServers` configuration to determine the launch method:
+Check **all auto-executing `npx` and `uvx` commands** across the entire settings configuration — not just MCP servers. This includes:
+
+- MCP servers registered via `uvx` or `npx` (identified in Check 2)
+- The `statusLine` command (if it uses `npx`)
+- Any hooks that use `npx` or `uvx`
+
+Look at the `command` and `args` fields in `mcpServers`, and the `command` field in `statusLine` and `hooks` objects.
 
 - Pinned: `uvx package-name==1.2.3` or `npx package-name@1.2.3`
-- Unpinned: `uvx package-name` or `npx package-name`
+- Unpinned: `uvx package-name` or `npx package-name` or `npx package-name@latest`
 
-Unpinned remote servers auto-update on every invocation — a compromised package would execute immediately.
+Note: `@latest` is equivalent to unpinned — it auto-updates on every invocation.
 
-- PASS: All remote servers are version-pinned
-- WARN: Unpinned remote servers found — list them with the supply chain risk
-- INFO: No remote servers found (all local or plugin-managed)
+Unpinned remote packages auto-update on every invocation — a compromised package would execute immediately.
+
+- PASS: All remote packages are version-pinned
+- WARN: Unpinned remote packages found — list them with the supply chain risk
+- INFO: No remote packages found (all local or plugin-managed)
 
 ### Check 7: Stale Credentials
 
@@ -327,9 +355,25 @@ Report:
 
 No PASS/FAIL — this is informational (INFO). Note that all conversation data (including MCP tool results) flows through Anthropic's API for inference.
 
-### Check 9: Assessment Status + Summary
+### Check 9: Hooks Audit
 
-#### 9a: Assessment File Status
+Check for hooks configured in settings files. Hooks execute shell commands automatically in response to Claude Code events (tool calls, notifications, etc.) — they are an attack surface similar to `statusLine`.
+
+Using the settings file content already read, look for `hooks` objects in `~/.claude/settings.json`, `~/.claude/settings.local.json`, and all project-level settings files.
+
+For each hook found:
+- Report the event trigger and command
+- Check if it uses `npx` or `uvx` without version pinning (same rules as Check 6)
+- Flag hooks that execute commands from `/tmp` or other world-writable paths
+- Flag hooks that download and execute remote scripts (e.g., `curl ... | sh`)
+
+- PASS: No hooks configured, or all hooks use pinned/local commands
+- WARN: Hooks found with unpinned packages or risky patterns
+- INFO: No hooks configured
+
+### Check 10: Assessment Status + Summary
+
+#### 10a: Assessment File Status
 
 Check whether a security assessment file exists:
 
@@ -351,7 +395,7 @@ ls -la ~/.claude/security-assessments/ 2>/dev/null
 
 Report the number of archived assessments if any exist.
 
-#### 9b: Summary
+#### 10b: Summary
 
 Present a summary table:
 
@@ -364,9 +408,10 @@ MCP server health              [PASS/WARN/FAIL] ([count] local, [count] remote)
 Dependency vulnerabilities     [PASS/WARN/FAIL]
 Credential security            [PASS/WARN/FAIL]
 Permissions audit              [PASS/WARN/FAIL]
-Remote server version pin      [PASS/WARN/FAIL/INFO]
+Remote package version pin     [PASS/WARN/FAIL/INFO]
 Stale credentials              [PASS/WARN/INFO]
 Anthropic data flow            [INFO]
+Hooks audit                    [PASS/WARN/INFO]
 Assessment status              [PASS/WARN/INFO]
 
 OVERALL: [X passed, Y warnings, Z failures, N informational]
