@@ -2,7 +2,6 @@
 name: local-setup
 description: Discover and document your Claude Code security posture. Scans MCP servers, inventories credentials, maps data flows, and generates a security-assessment.md file. Run once, then use /local-security:local-review for ongoing validation.
 user-invocable: true
-disable-model-invocation: true
 ---
 
 # /local-security:local-setup — Security Assessment Setup
